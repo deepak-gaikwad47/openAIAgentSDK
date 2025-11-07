@@ -78,13 +78,7 @@ export const chatWithWeatherAgentTool = async (req, res) => {
         subject,
         text: body,
       };
-      transporter.sendMail(mailOptions, function (error, info) {
-        if (error) {
-          console.log("Error sending email:", error);
-        } else {
-          res.send({ response: "We have sent you an email pls check your inbox" });
-        }
-      });
+      transporter.sendMail(mailOptions);
     },
   });
 
@@ -96,6 +90,7 @@ export const chatWithWeatherAgentTool = async (req, res) => {
       tools: [getWeatherTool, sendEmailTool],
     });
     await run(agent, prompt);
+    res.send({ message: "We have sent the email with weather information." });
   } catch (error) {
     console.log("Error communicating with OpenAI Weather Agent Tool:", error);
     res
