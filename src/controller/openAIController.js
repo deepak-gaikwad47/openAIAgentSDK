@@ -87,10 +87,13 @@ export const chatWithWeatherAgentTool = async (req, res) => {
       name: "WeatherAgentTool",
       instructions:
         "You will use the getWeather tool to get current weather information.",
-      tools: [getWeatherTool, sendEmailTool],
+      tools: [getWeatherTool],
+      outputType: z.object({
+        degree: z.number().describe('Current temoerature of city'),
+      })
     });
-    await run(agent, prompt);
-    res.send({ message: "We have sent the email with weather information." });
+    const result = await run(agent, prompt);
+    res.send({ result: result.finalOutput, message: "We have sent the email with weather information." });
   } catch (error) {
     console.log("Error communicating with OpenAI Weather Agent Tool:", error);
     res
