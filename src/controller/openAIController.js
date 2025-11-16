@@ -155,3 +155,62 @@ export const chatWithAgentManager = async (req, res) => {
     res.status(500).json({ error: "Error communicating with OpenAI Agent Manager" });
   }
 }
+
+export const chatWithAgentManagerUsingHandoff = async (req, res) => {
+  const { prompt } = req.body;
+try {
+      const fetchPlansTool = tool({
+      name: 'fetchPlans',
+      description: 'Fetch the list of available subscription plans',
+      parameters: z.object({}),
+      execute: async function () {
+        const plans = [
+         { name: 'Basic Plan', speed: '50 Mbps', price: '499 per month' },
+          { name: 'Standard Plan', speed: '100 Mbps', price: '799 per month' },
+          { name: 'Premium Plan', speed: '200 Mbps', price: '1199 per month' },
+        ];
+        return { plans };
+      }
+    })
+      const processRefundTool = tool({
+      name: "processRefund",
+      description: "You are an expert in refunding broadband subscriptions. Use this tool to process refund requests based on the provided plan details.",
+      parameters: z.object({
+        planName: z.string().describe("Name of the plan to refund"),
+        custmorID: z.number().describe("Name of the customer requesting refund"),
+        reason: z.string().describe("Reason for the refund request"),
+      }),
+      execute: async function ({ planName, custmorID, reason }) {
+        fs.appendFile('./refunds.txt', `CustmorId: ${custmorID}, PlanName: ${planName}, Reason: ${reason}\n`, 'utf8');
+        return { message: true };
+      }
+    })
+      const refundAgent = new Agent({
+      name: 'RefundAgent',
+      instructions: 'You are responsible for handling refund requests for broadband subscriptions. Use the fetchPlans tool to verify the plan details before processing refunds.',
+      tools: [processRefundTool]
+    })
+    const salesAgent = new Agent({
+      name: 'SalesAgent',
+      instructions: 'You are responsible for handling sales inquiries for broadband connection plans. Use the fetchPlans tool to provide customers with information about available subscription plans.',
+      tools: [fetchPlansTool, refundAgent.asTool({
+        toolName: 'refundAgent',
+        toolDescription: "Handles refund requests for broadband subscriptions.",
+      })]
+    })
+    const receptionAgent = new Agent({
+      name: "receptionAgent",
+      instructions: "You are the reception expert agent, your job is to understand a customr's request and handoff to salesAgent or refundAgent",
+      handoffDescription: `You have two agent availables to handoff, 
+      1. salesAgent is for sales and for exploring broadband connection plans,
+      2. refundAgent is for processing refund requests for broadband subscriptions.`,
+      handoffs: [salesAgent, refundAgent]
+    })
+    const result = await run(receptionAgent, prompt);
+    res.send({response: result.finalOutput, history: result.history});
+} catch (error) {
+  console.error("Error communicating with OpenAI Agent Manager with Handoff:", error);
+  res.status(500).json({ error: "Error communicating with OpenAI Agent Manager with Handoff" });
+}
+}
+
