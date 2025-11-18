@@ -1,5 +1,5 @@
 import { OpenAI } from "openai";
-import { Agent, run, tool } from "@openai/agents";
+import { Agent, run, tool, InputGuardrailTripwireTriggered } from "@openai/agents";
 import { z } from "zod";
 import axios from "axios";
 import { createTransport } from "nodemailer";
@@ -214,3 +214,45 @@ try {
 }
 }
 
+export const chatWithmathAgentWithGuardian = async (req, res) => {
+  const { prompt} = req.body;
+try {
+  const checkMathPromptAgent = new Agent({
+    name: "checkMathPrompt",
+    instructions: `You have to strictly check whether the user prompt contains any mathematical question or not..
+    Rules: 
+    1. Only respond true if prompt contains mathematical equation.
+    2. If the user prompt does not contain any mathematical question, set isMathQuestion to false.
+    3. Only respond with the outputType schema defined below.
+    
+    `,
+    outputType: z.object({
+      isMathQuestion: z.boolean().describe("Whether the user prompt contains mathematical question or not"),
+      outputInfo: z.string().describe("Additional information about the prompt analysis"),
+    })
+  })
+  const mathGuardrail = {
+    name: "Math Guardrail",
+    execute: async ({input}) => {
+      const checkMathPromptResult = await run(checkMathPromptAgent, input);
+      return {
+        tripwireTriggered: !checkMathPromptResult.finalOutput.isMathQuestion,
+        outputInfo: checkMathPromptResult.finalOutput,
+      }
+    }
+  }
+  const mathAgent = new Agent({
+    name: "MathAgent",
+    instructions: "You are an expert mathematician ai agent. You can solve complex mathematical problems with ease.",
+    inputGuardrails: [mathGuardrail],
+  })
+  const result = await run(mathAgent, prompt);
+  res.send({response: result.finalOutput});
+} catch (error) {
+  if(error instanceof InputGuardrailTripwireTriggered) {
+  res.status(500).json({ error: error.message });
+  }
+  console.error("Error communicating with OpenAI Math Agent with Guardian:", error);
+  res.status(500).json({ error: "Error communicating with OpenAI Math Agent with Guardian" });
+}
+}
