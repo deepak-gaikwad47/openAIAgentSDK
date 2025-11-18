@@ -1,4 +1,3 @@
-# Gen-AI with openAI SDK
 # GenAI Learning with OpenAI SDK
 
 This documentation is a personal guide to help understand and implement Generative AI (GenAI) concepts using the OpenAI SDK. It covers setup, usage patterns, useful examples, and best practices.
