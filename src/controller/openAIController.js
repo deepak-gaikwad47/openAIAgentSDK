@@ -1,5 +1,5 @@
 import { OpenAI } from "openai";
-import { Agent, run, tool, InputGuardrailTripwireTriggered } from "@openai/agents";
+import { Agent, run, tool, InputGuardrailTripwireTriggered, OutputGuardrailTripwireTriggered } from "@openai/agents";
 import { z } from "zod";
 import axios from "axios";
 import { createTransport } from "nodemailer";
@@ -255,4 +255,58 @@ try {
   console.error("Error communicating with OpenAI Math Agent with Guardian:", error);
   res.status(500).json({ error: "Error communicating with OpenAI Math Agent with Guardian" });
 }
+}
+
+export const sqlAgentWithoutputGuardian = async (req, res) => {
+  const { prompt } = req.body;
+  try {
+    const sqlGuardrailAgent = new Agent({
+      name: "SQL Guard",
+      instructions: `You have to strictly ensure that the final output of SQL agent contains valid SQL query only. aslo you need to check a query is safe it does not contain any harmful operations like DROP, DELETE etc.`,
+      outputType: z.object({
+        reason: z.string().describe("Reason for invalid SQL query"),
+        isSafe: z.boolean().describe("Whether the SQL query is safe or not"),
+      })
+    })
+    const sqlGuardrail = {
+      name: "SQL Output Guardrail",
+      execute: async ({agentOutput}) => {
+        const sqlGuardrailResult = await run(sqlGuardrailAgent, agentOutput.sqlQuery);
+        return {
+          tripwireTriggered: !sqlGuardrailResult.finalOutput.isSafe,
+          outputInfo: sqlGuardrailResult.finalOutput.reason,
+        }
+      }
+    }
+    const sqlAgnet = new Agent({
+      name: "SQL Agent",
+      instructions: `You are an expert SQL agent. You can generate complex SQL queries based on user requirements.
+      Postgrs schema:
+      Table: Employees
+      Columns: id, name, position, department, salary
+      1. id: Integer, Primary Key
+      2. name: Varchar(100)
+      3. position: Varchar(100)
+      4. department: Varchar(100)
+      5. salary: Integer
+      Table: Departments
+      Columns: id, name, location
+      1. id: Integer, Primary Key
+      2. name: Varchar(100)
+      3. location: Varchar(100)
+      `,
+      outputType: z.object({
+        sqlQuery: z.string().describe("The generated SQL query based on user requirements"),
+      }),
+      outputGuardrails: [sqlGuardrail],
+    })
+    const result = await run(sqlAgnet, prompt);
+    res.send({ response: result.finalOutput.sqlQuery });
+  } catch (error) {
+      if(error instanceof OutputGuardrailTripwireTriggered) {
+  res.status(500).json({ error: error.message });
+  }
+    console.error("Error communicating with OpenAI SQL Agent with output Guardian:", error);
+    res.status(500).json({ error: "Error communicating with OpenAI SQL Agent with output Guardian" });
+  }
 }
